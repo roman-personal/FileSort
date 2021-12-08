@@ -15,7 +15,7 @@ namespace FileGen {
                 var generator = CreateGenerator(options.Mode);
                 var sw = new Stopwatch();
                 sw.Start();
-                generator.Excecute(options);
+                generator.Execute(options);
                 sw.Stop();
                 Console.WriteLine($"Done! Elapsed: {sw.Elapsed }");
             }

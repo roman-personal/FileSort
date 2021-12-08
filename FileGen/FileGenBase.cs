@@ -20,7 +20,7 @@ namespace FileGen {
         public int MaxNumber { get; }
         public IList<string> TextItems { get; }
 
-        public void Excecute(FileGenOptions options) {
+        public void Execute(FileGenOptions options) {
             if (options == null)
                 throw new ArgumentNullException("options should not be null");
             using var stream = new FileStream(options.FileName, FileMode.Create, FileAccess.Write, FileShare.None, 32768);
