@@ -6,8 +6,8 @@ using System.Threading.Tasks;
 
 namespace FileSort {
     internal class FileChunk : List<FileRecord> {
-        public const int ChunkSize = 100000;
+        public const int Size = 100000;
 
-        public FileChunk() : base (ChunkSize) { }
+        public FileChunk() : base (Size) { }
     }
 }

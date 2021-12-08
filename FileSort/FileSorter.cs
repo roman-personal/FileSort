@@ -12,20 +12,26 @@ namespace FileSort {
     internal class FileSorter {
         readonly ConcurrentQueue<FileChunk> filledChunks = new();
         readonly ConcurrentQueue<FileChunk> freeChunks = new();
+        readonly ConcurrentQueue<string> filesToMerge = new();
         string tempDirPath;
         SemaphoreSlim chunksThrottle;
         ManualResetEventSlim readComplete;
+        ManualResetEventSlim sortComplete;
 
         public FileSorter() { }
 
         public void Execute(FileSortOptions options) {
             PrepareTempDir();
             try {
+                using (sortComplete = new ManualResetEventSlim(false))
                 using (readComplete = new ManualResetEventSlim(false))
-                using (chunksThrottle = new SemaphoreSlim(Math.Max(4, options.MaxThreadCount))) {
-                    var tasks = CreateSortTasks(Math.Max(2, options.MaxThreadCount - 2));
+                using (chunksThrottle = new SemaphoreSlim(options.MaxThreadCount)) {
+                    var mergeTasks = CreateMergeTasks(2);
+                    var sortTasks = CreateSortTasks(Math.Max(2, options.MaxThreadCount - 3));
                     ReadSourceFile(options.SourceFileName);
-                    Task.WaitAll(tasks);
+                    Task.WaitAll(sortTasks);
+                    sortComplete.Set();
+                    Task.WaitAll(mergeTasks);
                 }
             }
             finally {
@@ -37,6 +43,13 @@ namespace FileSort {
             var tasks = new List<Task>();
             for (int i = 0; i < count; i++)
                 tasks.Add(Task.Run(SortChunk));
+            return tasks.ToArray();
+        }
+
+        Task[] CreateMergeTasks(int count) {
+            var tasks = new List<Task>();
+            for (int i = 0; i < count; i++)
+                tasks.Add(Task.Run(MergeFiles));
             return tasks.ToArray();
         }
 
@@ -64,10 +77,11 @@ namespace FileSort {
                 using var reader = new StreamReader(stream);
                 while (true) {
                     chunksThrottle.Wait();
+                    //Console.WriteLine($"free {freeChunks.Count} filled {filledChunks.Count} trottle {chunksThrottle.CurrentCount}");
                     var chunk = GetChunk();
                     FillChunk(reader, chunk);
                     filledChunks.Enqueue(chunk);
-                    if (chunk.Count < FileChunk.ChunkSize)
+                    if (chunk.Count < FileChunk.Size)
                         break;
                 }
             }
@@ -84,35 +98,56 @@ namespace FileSort {
         }
 
         void FillChunk(StreamReader reader, FileChunk chunk) {
-            while (chunk.Count < FileChunk.ChunkSize) {
-                string line = reader.ReadLine();
-                if (line == null)
+            while (chunk.Count < FileChunk.Size) {
+                var record = ReadRecord(reader);
+                if (record == null)
                     break;
-                int pos = line.IndexOf(". ");
-                if (pos == -1)
-                    throw new InvalidDataException();
-                int id;
-                if (!int.TryParse(line.Substring(0, pos), out id) || id < 0)
-                    throw new InvalidDataException();
-                var record = new FileRecord(id, line.Substring(pos + 2));
                 chunk.Add(record);
             }
         }
 
-        void SortChunk() {
-            while(!readComplete.IsSet) {
-                if (filledChunks.IsEmpty)
-                    Thread.Sleep(10);
-                else {
-                    FileChunk chunk;
-                    if (filledChunks.TryDequeue(out chunk)) {
-                        chunk.Sort();
-                        chunksThrottle.Release();
-                        WriteChunk(chunk, Path.Combine(tempDirPath, Guid.NewGuid().ToString() + ".txt"));
-                        chunk.Clear();
-                        freeChunks.Enqueue(chunk);
-                    }
+        FileRecord ReadRecord(StreamReader reader) {
+            int id = ReadNumber(reader);
+            if (id < 0)
+                return null;
+            string line = reader.ReadLine();
+            if (line == null)
+                return null;
+            return new FileRecord(id, line);
+        }
+
+        int ReadNumber(StreamReader reader) {
+            var sb = new StringBuilder();
+            while (true) {
+                int c = reader.Read();
+                if (c == -1)
+                    return -1;
+                if (c == '.') {
+                    if (!int.TryParse(sb.ToString(), out int result) || result < 0)
+                        throw new InvalidDataException();
+                    c = reader.Read();
+                    if (c != ' ')
+                        throw new InvalidDataException();
+                    return result;
                 }
+                else
+                    sb.Append((char)c);
+            }
+        }
+
+        void SortChunk() {
+            while(!readComplete.IsSet || !filledChunks.IsEmpty) {
+                if (filledChunks.TryDequeue(out FileChunk chunk)) {
+                    chunk.Sort();
+                    chunksThrottle.Release();
+                    string fileName = Path.Combine(tempDirPath, Guid.NewGuid().ToString() + ".txt");
+                    WriteChunk(chunk, fileName);
+                    filesToMerge.Enqueue(fileName);
+                    chunk.Clear();
+                    freeChunks.Enqueue(chunk);
+                }
+                else
+                    Thread.Sleep(50);
             }
         }
 
@@ -134,6 +169,15 @@ namespace FileSort {
             if (sb.Length > 0) {
                 foreach (var c in sb.GetChunks())
                     writer.Write(c);
+            }
+        }
+
+        void MergeFiles() {
+            while (!sortComplete.IsSet || !filesToMerge.IsEmpty) {
+                if (filesToMerge.TryDequeue(out string fileName)) {
+                    // TODO
+                }
+                Thread.Sleep(50);
             }
         }
     }
