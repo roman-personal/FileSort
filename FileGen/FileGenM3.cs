@@ -55,7 +55,7 @@ namespace FileGen {
             while (currentSize < targetSize) {
                 readyToWrite.Wait();
                 readyToWrite.Reset();
-                SwapStringBuilders();
+                Swap();
                 currentSize += sbToWrite.Length;
                 lengthToGen = (int)Math.Min(chunkSize, targetSize - currentSize);
                 readyToGen.Set();
@@ -65,7 +65,7 @@ namespace FileGen {
             }
         }
 
-        void SwapStringBuilders() {
+        void Swap() {
             var tmp = sbToGen;
             sbToGen = sbToWrite;
             sbToWrite = tmp;
