@@ -26,13 +26,13 @@ namespace FileGen {
         }
 
         static FileGenBase CreateGenerator(GenMode mode) {
-            var textItems = LoadtextItems();
+            var textItems = LoadTextItems();
             if (mode == GenMode.M1)
                 return new FileGenM1(textItems, MaxNumber);
             return new FileGenM2(textItems, MaxNumber);
         }
 
-        static IList<string> LoadtextItems() {
+        static IList<string> LoadTextItems() {
             string fileName = Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location), "sentences.txt");
             var result = new List<string>();
             using var reader = File.OpenText(fileName);
