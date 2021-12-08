@@ -2,7 +2,7 @@
   "profiles": {
     "FileGen": {
       "commandName": "Project",
-      "commandLineArgs": "sample.txt 1024 M2"
+      "commandLineArgs": "sample.txt 1024 M3"
     }
   }
 }

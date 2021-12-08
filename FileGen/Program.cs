@@ -27,9 +27,11 @@ namespace FileGen {
 
         static FileGenBase CreateGenerator(GenMode mode) {
             var textItems = LoadTextItems();
-            if (mode == GenMode.M1)
-                return new FileGenM1(textItems, MaxNumber);
-            return new FileGenM2(textItems, MaxNumber);
+            return mode switch {
+                GenMode.M1 => new FileGenM1(textItems, MaxNumber),
+                GenMode.M3 => new FileGenM3(textItems, MaxNumber),
+                _ => new FileGenM2(textItems, MaxNumber),
+            };
         }
 
         static IList<string> LoadTextItems() {

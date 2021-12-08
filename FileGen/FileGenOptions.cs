@@ -3,7 +3,8 @@
 namespace FileGen {
     internal enum GenMode {
         M1,
-        M2
+        M2,
+        M3
     }
 
     internal class FileGenOptions {
