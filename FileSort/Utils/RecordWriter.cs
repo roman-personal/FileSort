@@ -23,23 +23,21 @@ namespace FileSort.Utils {
             sb.Append(". ");
             sb.AppendLine(record.Text);
             if (sb.Length > chunkSize) {
-                FlushCore();
+                writer.Write(sb);
                 sb.Clear();
             }
         }
 
         public void Flush() {
-            if (sb.Length > 0)
-                FlushCore();
-        }
-
-        void FlushCore() {
-            foreach (var c in sb.GetChunks())
-                writer.Write(c);
+            if (sb.Length > 0) {
+                writer.Write(sb);
+                sb.Clear();
+            }
         }
 
         public void Dispose() {
             Flush();
+            writer?.Flush();
             writer?.Dispose();
             writer = null;
             stream?.Dispose();

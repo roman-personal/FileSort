@@ -6,26 +6,24 @@ namespace FileSort.Utils {
     internal class RecordReader : IDisposable {
         Stream stream;
         StreamReader reader;
-        StringBuilder sb;
 
         public RecordReader(string fileName) {
-            stream = new FileStream(fileName, FileMode.Open, FileAccess.Read, FileShare.Read, 32768);
+            stream = new FileStream(fileName, FileMode.Open, FileAccess.Read, FileShare.None, 32768);
             reader = new StreamReader(stream);
-            sb = new StringBuilder();
         }
 
         public FileRecord ReadRecord() {
-            int id = ReadNumber();
-            if (id < 0)
+            int num = ReadNumber();
+            if (num < 0)
                 return null;
             string line = reader.ReadLine();
             if (line == null)
                 return null;
-            return new FileRecord(id, line);
+            return new FileRecord(num, line);
         }
 
         int ReadNumber() {
-            sb.Clear();
+            var sb = new StringBuilder();
             while (true) {
                 int c = reader.Read();
                 if (c == -1)
@@ -48,7 +46,6 @@ namespace FileSort.Utils {
             reader = null;
             stream?.Dispose();
             stream = null;
-            sb = null;
         }
     }
 }
