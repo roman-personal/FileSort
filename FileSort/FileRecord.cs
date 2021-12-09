@@ -2,18 +2,18 @@
 
 namespace FileSort {
     internal class FileRecord : IComparable<FileRecord>{
-        public FileRecord(int id, string text) {
-            Id = id;
+        public FileRecord(int num, string text) {
+            Num = num;
             Text = text;
         }
 
-        public int Id { get; }
+        public int Num { get; }
         public string Text {  get; }
 
         public int CompareTo(FileRecord other) {
             int result = string.Compare(Text, other.Text, StringComparison.InvariantCultureIgnoreCase);
             if (result == 0)
-                result = Id.CompareTo(other.Id);
+                result = Num.CompareTo(other.Num);
             return result;
         }
     }
