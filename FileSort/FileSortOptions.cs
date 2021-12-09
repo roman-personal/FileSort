@@ -4,6 +4,7 @@ namespace FileSort {
     internal enum SortMode {
         M1,
         M2,
+        M3
     }
 
     internal class FileSortOptions {

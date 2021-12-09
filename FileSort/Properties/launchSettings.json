@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "FileSort": {
+      "commandName": "Project",
+      "commandLineArgs": "sample.txt sorted.txt 0 M3"
+    }
+  }
+}
