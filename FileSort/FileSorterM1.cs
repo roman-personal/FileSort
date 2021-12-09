@@ -8,7 +8,7 @@ using System.Threading.Tasks;
 using FileSort.Utils;
 
 namespace FileSort {
-    internal class FileSorter {
+    internal class FileSorterM1 : IFileSorter {
         readonly ConcurrentQueue<FileChunk> filledChunks = new ConcurrentQueue<FileChunk>();
         readonly ConcurrentQueue<FileChunk> freeChunks = new ConcurrentQueue<FileChunk>();
         readonly Queue<string> filesToMerge = new Queue<string>();
@@ -20,7 +20,7 @@ namespace FileSort {
         ManualResetEventSlim readComplete;
         ManualResetEventSlim sortComplete;
 
-        public FileSorter() { }
+        public FileSorterM1() { }
 
         public void Execute(FileSortOptions options) {
             sortedFilePath = options.TargetFileName;
@@ -29,7 +29,7 @@ namespace FileSort {
             try {
                 using (sortComplete = new ManualResetEventSlim(false))
                 using (readComplete = new ManualResetEventSlim(false))
-                using (chunksThrottle = new SemaphoreSlim(options.MaxThreadCount * 2)) {
+                using (chunksThrottle = new SemaphoreSlim(options.MaxThreadCount + 4)) {
                     var mergeTasks = CreateMergeTasks(options.MaxThreadCount);
                     var sortTasks = CreateSortTasks(options.MaxThreadCount);
                     ReadSourceFile(options.SourceFileName);

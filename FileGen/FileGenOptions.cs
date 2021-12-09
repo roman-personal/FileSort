@@ -11,12 +11,10 @@ namespace FileGen {
         public static FileGenOptions Parse(string[] args) {
             var result = new FileGenOptions();
             result.FileName = args.Length > 0 ? args[0] : "sample.txt";
-            int targetSizeInMegabytes;
-            if (!int.TryParse(args.Length > 1 ? args[1] : "1024", out targetSizeInMegabytes) || targetSizeInMegabytes < 1)
+            if (!int.TryParse(args.Length > 1 ? args[1] : "1024", out int targetSizeInMegabytes) || targetSizeInMegabytes < 1)
                 targetSizeInMegabytes = 1024;
             result.TargetFileSize = targetSizeInMegabytes;
-            GenMode mode;
-            if (!Enum.TryParse(args.Length > 2 ? args[2] : "M2", out mode))
+            if (!Enum.TryParse(args.Length > 2 ? args[2] : "M2", out GenMode mode))
                 mode = GenMode.M2;
             result.Mode = mode;
             return result;

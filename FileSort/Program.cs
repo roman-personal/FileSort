@@ -7,7 +7,7 @@ namespace FileSort {
             try {
                 var options = FileSortOptions.Parse(args);
                 Console.WriteLine($"Sorting: {options.SourceFileName}");
-                var sorter = new FileSorter();
+                var sorter = CreateSorter(options.Mode);
                 var sw = new Stopwatch();
                 sw.Start();
                 sorter.Execute(options);
@@ -18,6 +18,11 @@ namespace FileSort {
                 Console.WriteLine("Failed!");
                 Console.WriteLine(ex.Message);
             }
+        }
+
+        static IFileSorter CreateSorter(SortMode mode) {
+            // TODO
+            return new FileSorterM1();
         }
     }
 }

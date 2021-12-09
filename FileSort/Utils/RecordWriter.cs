@@ -18,10 +18,12 @@ namespace FileSort.Utils {
             sb = new StringBuilder(chunkSize + 1024);
         }
 
-        public void Write(FileRecord record) {
-            sb.Append(record.Num);
+        public void Write(FileRecord record) => Write(record.Num, record.Text);
+
+        public void Write(int num, string text) {
+            sb.Append(num);
             sb.Append(". ");
-            sb.AppendLine(record.Text);
+            sb.AppendLine(text);
             if (sb.Length > chunkSize) {
                 writer.Write(sb);
                 sb.Clear();
