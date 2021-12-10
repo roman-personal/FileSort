@@ -11,7 +11,7 @@ namespace FileSort {
     internal class FileSorterM1 : IFileSorter {
         readonly ConcurrentQueue<FileChunk> filledChunks = new ConcurrentQueue<FileChunk>();
         readonly ConcurrentQueue<FileChunk> freeChunks = new ConcurrentQueue<FileChunk>();
-        readonly Queue<string> filesToMerge = new Queue<string>();
+        readonly FileQueue filesToMerge = new FileQueue();
         readonly object syncFilesToMerge = new object();
         int filesInMerge = 0;
         string tempDirPath;
@@ -29,9 +29,9 @@ namespace FileSort {
             try {
                 using (sortComplete = new ManualResetEventSlim(false))
                 using (readComplete = new ManualResetEventSlim(false))
-                using (chunksThrottle = new SemaphoreSlim(options.MaxThreadCount + 4)) {
-                    var mergeTasks = CreateMergeTasks(options.MaxThreadCount);
-                    var sortTasks = CreateSortTasks(options.MaxThreadCount);
+                using (chunksThrottle = new SemaphoreSlim(8)) {
+                    var mergeTasks = CreateMergeTasks(4);
+                    var sortTasks = CreateSortTasks(4);
                     ReadSourceFile(options.SourceFileName);
                     Task.WaitAll(sortTasks);
                     sortComplete.Set();
@@ -121,7 +121,7 @@ namespace FileSort {
                     string fileName = Path.Combine(tempDirPath, Guid.NewGuid().ToString() + ".txt");
                     WriteChunk(chunk, fileName);
                     lock (syncFilesToMerge)
-                        filesToMerge.Enqueue(fileName);
+                        filesToMerge.Enqueue(1, fileName);
                     chunk.Clear();
                     freeChunks.Enqueue(chunk);
                     chunksThrottle.Release();
@@ -141,35 +141,35 @@ namespace FileSort {
         void MergeFiles() {
             bool lastMerge = false;
             while (!lastMerge) {
-                string firstFileName = null;
-                string secondFileName = null;
+                FileQueueItem first = null;
+                FileQueueItem second = null;
                 lock (syncFilesToMerge) {
                     if (filesToMerge.Count == 0 && sortComplete.IsSet)
                         return;
                     if (filesToMerge.Count > 2) {
-                        firstFileName = filesToMerge.Dequeue();
-                        secondFileName = filesToMerge.Dequeue();
+                        first = filesToMerge.Dequeue();
+                        second = filesToMerge.Dequeue();
                         filesInMerge += 2;
                     }
                     else if (filesToMerge.Count <= 2 && filesInMerge == 0 && sortComplete.IsSet) {
-                        firstFileName = filesToMerge.Dequeue();
+                        first = filesToMerge.Dequeue();
                         if (filesToMerge.Count > 0)
-                            secondFileName = filesToMerge.Dequeue();
+                            second = filesToMerge.Dequeue();
                         lastMerge = true;
                     }
                 }
-                if (!string.IsNullOrEmpty(firstFileName)) {
+                if (first != null) {
                     string fileName = lastMerge ? sortedFilePath : Path.Combine(tempDirPath, Guid.NewGuid().ToString() + ".txt");
-                    if (string.IsNullOrEmpty(secondFileName)) {
-                        File.Move(firstFileName, fileName, true);
+                    if (second == null) {
+                        File.Move(first.FileName, fileName, true);
                     }
                     else {
-                        MergeFiles(firstFileName, secondFileName, fileName);
-                        File.Delete(firstFileName);
-                        File.Delete(secondFileName);
+                        MergeFiles(first.FileName, second.FileName, fileName);
+                        File.Delete(first.FileName);
+                        File.Delete(second.FileName);
                         if (!lastMerge) {
                             lock (syncFilesToMerge) {
-                                filesToMerge.Enqueue(fileName);
+                                filesToMerge.Enqueue(Math.Max(first.Generation, second.Generation), fileName);
                                 filesInMerge -= 2;
                             }
                         }

@@ -2,7 +2,7 @@
   "profiles": {
     "FileSort": {
       "commandName": "Project",
-      "commandLineArgs": "sample.txt sorted.txt 0 M3"
+      "commandLineArgs": "sample.txt sorted.txt M1"
     }
   }
 }

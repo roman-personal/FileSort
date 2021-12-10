@@ -21,8 +21,8 @@ namespace FileSort {
         }
 
         static IFileSorter CreateSorter(SortMode mode) {
-            if (mode == SortMode.M3)
-                return new FileSorterM3();
+            if (mode == SortMode.M2)
+                return new FileSorterM2();
             return new FileSorterM1();
         }
     }

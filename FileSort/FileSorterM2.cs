@@ -4,13 +4,11 @@ using System.Linq;
 using FileSort.Utils;
 
 namespace FileSort {
-    internal class FileSorterM3 : IFileSorter {
+    internal class FileSorterM2 : IFileSorter {
         const int MaxNumber = 100000;
-        readonly Dictionary<string, int[]> dataDictionary;
+        readonly Dictionary<string, int[]> dataDictionary = new Dictionary<string, int[]>();
 
-        public FileSorterM3() {
-            dataDictionary = new Dictionary<string, int[]>(StringComparer.InvariantCultureIgnoreCase);
-        }
+        public FileSorterM2() { }
 
         public void Execute(FileSortOptions options) {
             ReadData(options.SourceFileName);
@@ -32,7 +30,7 @@ namespace FileSort {
 
         void WriteData(string fileName) {
             using var writer = new RecordWriter(fileName);
-            var orderedItems = dataDictionary.OrderBy(x => x.Key, StringComparer.InvariantCultureIgnoreCase);
+            var orderedItems = dataDictionary.OrderBy(x => x.Key);
             foreach (var item in orderedItems) {
                 var numbers = item.Value;
                 for (int i = 0; i < numbers.Length; i++) {
