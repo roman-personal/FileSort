@@ -43,5 +43,19 @@ namespace FileSort {
             items.RemoveAt(0);
             return result;
         }
+
+        public IEnumerable<FileQueueItem> BulkDequeue(int maxGeneration, int count) {
+            var result = new List<FileQueueItem>();
+            for (int i = 0; i < count; i++) {
+                if (items[i].Generation > maxGeneration)
+                    break;
+                result.Add(items[i]);
+            }
+            if (result.Count < 2)
+                result.Clear();
+            else
+                items.RemoveRange(0, result.Count);
+            return result;
+        }
     }
 }

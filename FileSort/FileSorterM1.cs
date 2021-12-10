@@ -13,6 +13,7 @@ namespace FileSort {
         const int NumberOfSortingTasks = 4;
         const int NumberOfMergingTasks = 4;
         const int MaxNumberOfFilledChunks = 8;
+        const int MaxGeneration = 2;
         const int MaxNumberOfFilesToMerge = 8;
         readonly ConcurrentQueue<FileChunk> filledChunks = new ConcurrentQueue<FileChunk>();
         readonly ConcurrentQueue<FileChunk> freeChunks = new ConcurrentQueue<FileChunk>();
@@ -21,7 +22,7 @@ namespace FileSort {
         int filesInMerge = 0;
         string tempDirPath;
         string sortedFilePath;
-        SemaphoreSlim chunksThrottle;
+        SemaphoreSlim chunkThrottle;
         ManualResetEventSlim readComplete;
         ManualResetEventSlim sortComplete;
 
@@ -34,7 +35,7 @@ namespace FileSort {
             try {
                 using (sortComplete = new ManualResetEventSlim(false))
                 using (readComplete = new ManualResetEventSlim(false))
-                using (chunksThrottle = new SemaphoreSlim(MaxNumberOfFilledChunks)) {
+                using (chunkThrottle = new SemaphoreSlim(MaxNumberOfFilledChunks)) {
                     var mergeTasks = CreateMergeTasks(NumberOfMergingTasks);
                     var sortTasks = CreateSortTasks(NumberOfSortingTasks);
                     ReadSourceFile(options.SourceFileName);
@@ -84,7 +85,7 @@ namespace FileSort {
             try {
                 using var reader = new RecordReader(fileName);
                 while (true) {
-                    chunksThrottle.Wait();
+                    chunkThrottle.Wait();
                     var chunk = GetFreeChunk();
                     FillChunk(reader, chunk);
                     filledChunks.Enqueue(chunk);
@@ -129,7 +130,7 @@ namespace FileSort {
                         filesToMerge.Enqueue(1, fileName);
                     chunk.Clear();
                     freeChunks.Enqueue(chunk);
-                    chunksThrottle.Release();
+                    chunkThrottle.Release();
                 }
                 else
                     Thread.Sleep(50);
@@ -152,11 +153,10 @@ namespace FileSort {
                     if (filesToMerge.Count == 0 && sortComplete.IsSet)
                         return;
                     if (filesToMerge.Count > MaxNumberOfFilesToMerge) {
-                        for (int i = 0; i < MaxNumberOfFilesToMerge; i++)
-                            items.Add(filesToMerge.Dequeue());
+                        items.AddRange(filesToMerge.BulkDequeue(MaxGeneration, MaxNumberOfFilesToMerge));
                         filesInMerge += items.Count;
                     }
-                    else if (/*filesToMerge.Count <= MaxNumberOfFilesToMerge && */filesInMerge == 0 && sortComplete.IsSet) {
+                    else if (filesInMerge == 0 && sortComplete.IsSet) {
                         while (filesToMerge.Count > 0)
                             items.Add(filesToMerge.Dequeue());
                         lastMerge = true;
@@ -180,7 +180,7 @@ namespace FileSort {
                     }
                 }
                 else
-                    Thread.Sleep(50);
+                    Thread.Sleep(100);
             }
         }
 
@@ -193,7 +193,7 @@ namespace FileSort {
                 foreach (var source in recordSources)
                     source.NextRecord();
                 while (true) {
-                    var source = FindMinItem(recordSources);
+                    var source = GetSourceWithLowestRecord(recordSources);
                     if (source == null)
                         break;
                     writer.Write(source.Record);
@@ -207,7 +207,7 @@ namespace FileSort {
             }
         }
 
-        RecordSource FindMinItem(List<RecordSource> recordSources) {
+        RecordSource GetSourceWithLowestRecord(List<RecordSource> recordSources) {
             RecordSource result = null;
             foreach (var recordSource in recordSources.Where(x => x.Record != null)) {
                 if (result == null || recordSource.Record.CompareTo(result.Record) < 0)
