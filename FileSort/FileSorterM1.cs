@@ -173,7 +173,7 @@ namespace FileSort {
                         items.ForEach(x => File.Delete(x.FileName));
                         if (!lastMerge) {
                             lock (syncFilesToMerge) {
-                                filesToMerge.Enqueue(items.Select(x => x.Generation).Max(), fileName);
+                                filesToMerge.Enqueue(items.Select(x => x.Generation).Max() + 1, fileName);
                                 filesInMerge -= items.Count;
                             }
                         }
