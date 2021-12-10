@@ -150,17 +150,19 @@ namespace FileSort {
             while (!lastMerge) {
                 items.Clear();
                 lock (syncFilesToMerge) {
-                    if (filesToMerge.Count == 0 && sortComplete.IsSet)
-                        return;
-                    if (filesToMerge.Count > MaxNumberOfFilesToMerge) {
+                    if (sortComplete.IsSet) {
+                        if (filesToMerge.Count == 0)
+                            return;
+                        if (filesInMerge == 0) {
+                            while (filesToMerge.Count > 0)
+                                items.Add(filesToMerge.Dequeue());
+                            lastMerge = true;
+                            Console.WriteLine("Last merge");
+                        }
+                    }
+                    else if (filesToMerge.GetCount(MaxGeneration) > MaxNumberOfFilesToMerge) {
                         items.AddRange(filesToMerge.BulkDequeue(MaxGeneration, MaxNumberOfFilesToMerge));
                         filesInMerge += items.Count;
-                    }
-                    else if (filesInMerge == 0 && sortComplete.IsSet) {
-                        while (filesToMerge.Count > 0)
-                            items.Add(filesToMerge.Dequeue());
-                        lastMerge = true;
-                        Console.WriteLine("Last merge");
                     }
                 }
                 if (items.Count > 0) {

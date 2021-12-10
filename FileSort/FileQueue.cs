@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace FileSort {
     internal class FileQueueItem {
@@ -57,5 +58,8 @@ namespace FileSort {
                 items.RemoveRange(0, result.Count);
             return result;
         }
+
+        public int GetCount(int maxGeneration) =>
+            items.Where(x => x.Generation <= maxGeneration).Count();
     }
 }
