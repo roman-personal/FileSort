@@ -2,6 +2,7 @@
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
@@ -9,6 +10,10 @@ using FileSort.Utils;
 
 namespace FileSort {
     internal class FileSorterM1 : IFileSorter {
+        const int NumberOfSortingTasks = 4;
+        const int NumberOfMergingTasks = 4;
+        const int MaxNumberOfFilledChunks = 8;
+        const int MaxNumberOfFilesToMerge = 8;
         readonly ConcurrentQueue<FileChunk> filledChunks = new ConcurrentQueue<FileChunk>();
         readonly ConcurrentQueue<FileChunk> freeChunks = new ConcurrentQueue<FileChunk>();
         readonly FileQueue filesToMerge = new FileQueue();
@@ -29,12 +34,13 @@ namespace FileSort {
             try {
                 using (sortComplete = new ManualResetEventSlim(false))
                 using (readComplete = new ManualResetEventSlim(false))
-                using (chunksThrottle = new SemaphoreSlim(8)) {
-                    var mergeTasks = CreateMergeTasks(4);
-                    var sortTasks = CreateSortTasks(4);
+                using (chunksThrottle = new SemaphoreSlim(MaxNumberOfFilledChunks)) {
+                    var mergeTasks = CreateMergeTasks(NumberOfMergingTasks);
+                    var sortTasks = CreateSortTasks(NumberOfSortingTasks);
                     ReadSourceFile(options.SourceFileName);
                     Task.WaitAll(sortTasks);
                     sortComplete.Set();
+                    Console.WriteLine("Read/sort completed");
                     Task.WaitAll(mergeTasks);
                 }
             }
@@ -79,7 +85,6 @@ namespace FileSort {
                 using var reader = new RecordReader(fileName);
                 while (true) {
                     chunksThrottle.Wait();
-                    //Console.WriteLine($"free {freeChunks.Count} filled {filledChunks.Count} trottle {chunksThrottle.CurrentCount}");
                     var chunk = GetFreeChunk();
                     FillChunk(reader, chunk);
                     filledChunks.Enqueue(chunk);
@@ -140,37 +145,36 @@ namespace FileSort {
 
         void MergeFiles() {
             bool lastMerge = false;
+            var items = new List<FileQueueItem>();
             while (!lastMerge) {
-                FileQueueItem first = null;
-                FileQueueItem second = null;
+                items.Clear();
                 lock (syncFilesToMerge) {
                     if (filesToMerge.Count == 0 && sortComplete.IsSet)
                         return;
-                    if (filesToMerge.Count > 2) {
-                        first = filesToMerge.Dequeue();
-                        second = filesToMerge.Dequeue();
-                        filesInMerge += 2;
+                    if (filesToMerge.Count > MaxNumberOfFilesToMerge) {
+                        for (int i = 0; i < MaxNumberOfFilesToMerge; i++)
+                            items.Add(filesToMerge.Dequeue());
+                        filesInMerge += items.Count;
                     }
-                    else if (filesToMerge.Count <= 2 && filesInMerge == 0 && sortComplete.IsSet) {
-                        first = filesToMerge.Dequeue();
-                        if (filesToMerge.Count > 0)
-                            second = filesToMerge.Dequeue();
+                    else if (/*filesToMerge.Count <= MaxNumberOfFilesToMerge && */filesInMerge == 0 && sortComplete.IsSet) {
+                        while (filesToMerge.Count > 0)
+                            items.Add(filesToMerge.Dequeue());
                         lastMerge = true;
+                        Console.WriteLine("Last merge");
                     }
                 }
-                if (first != null) {
+                if (items.Count > 0) {
                     string fileName = lastMerge ? sortedFilePath : Path.Combine(tempDirPath, Guid.NewGuid().ToString() + ".txt");
-                    if (second == null) {
-                        File.Move(first.FileName, fileName, true);
+                    if (items.Count == 1) {
+                        File.Move(items[0].FileName, fileName, true);
                     }
                     else {
-                        MergeFiles(first.FileName, second.FileName, fileName);
-                        File.Delete(first.FileName);
-                        File.Delete(second.FileName);
+                        MergeFiles(items.Select(x => x.FileName), fileName);
+                        items.ForEach(x => File.Delete(x.FileName));
                         if (!lastMerge) {
                             lock (syncFilesToMerge) {
-                                filesToMerge.Enqueue(Math.Max(first.Generation, second.Generation), fileName);
-                                filesInMerge -= 2;
+                                filesToMerge.Enqueue(items.Select(x => x.Generation).Max(), fileName);
+                                filesInMerge -= items.Count;
                             }
                         }
                     }
@@ -180,31 +184,36 @@ namespace FileSort {
             }
         }
 
-        void MergeFiles(string firstFileName, string secondFileName, string targetFileName) {
+        void MergeFiles(IEnumerable<string> sourceFileNames, string targetFileName) {
             using var writer = new RecordWriter(targetFileName);
-            using var firstReader = new RecordReader(firstFileName);
-            using var secondReader = new RecordReader(secondFileName);
-            var firstRecord = firstReader.ReadRecord();
-            var secondRecord = secondReader.ReadRecord();
-            while (firstRecord != null || secondRecord != null) {
-                if (firstRecord == null) {
-                    writer.Write(secondRecord);
-                    secondRecord = secondReader.ReadRecord();
+            var recordSources = new List<RecordSource>();
+            try {
+                foreach (var sourceFileName in sourceFileNames)
+                    recordSources.Add(new RecordSource(sourceFileName));
+                foreach (var source in recordSources)
+                    source.NextRecord();
+                while (true) {
+                    var source = FindMinItem(recordSources);
+                    if (source == null)
+                        break;
+                    writer.Write(source.Record);
+                    source.NextRecord();
                 }
-                else if (secondRecord == null) {
-                    writer.Write(firstRecord);
-                    firstRecord = firstReader.ReadRecord();
-                }
-                else if (firstRecord.CompareTo(secondRecord) <= 0) {
-                    writer.Write(firstRecord);
-                    firstRecord = firstReader.ReadRecord();
-                }
-                else {
-                    writer.Write(secondRecord);
-                    secondRecord = secondReader.ReadRecord();
-                }
+                writer.Flush();
             }
-            writer.Flush();
+            finally {
+                foreach (var source in recordSources)
+                    source.Dispose();
+            }
+        }
+
+        RecordSource FindMinItem(List<RecordSource> recordSources) {
+            RecordSource result = null;
+            foreach (var recordSource in recordSources.Where(x => x.Record != null)) {
+                if (result == null || recordSource.Record.CompareTo(result.Record) < 0)
+                    result = recordSource;
+            }
+            return result;
         }
     }
 }

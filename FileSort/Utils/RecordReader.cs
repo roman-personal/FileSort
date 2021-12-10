@@ -9,7 +9,7 @@ namespace FileSort.Utils {
         StringBuilder sb;
 
         public RecordReader(string fileName) {
-            stream = new FileStream(fileName, FileMode.Open, FileAccess.Read, FileShare.None, 32768);
+            stream = new FileStream(fileName, FileMode.Open, FileAccess.Read, FileShare.None, 1024*1024);
             reader = new StreamReader(stream);
             sb = new StringBuilder();
         }
