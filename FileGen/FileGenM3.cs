@@ -59,8 +59,7 @@ namespace FileGen {
                 currentSize += sbToWrite.Length;
                 lengthToGen = (int)Math.Min(chunkSize, targetSize - currentSize);
                 readyToGen.Set();
-                foreach (var chunk in sbToWrite.GetChunks())
-                    writer.Write(chunk);
+                writer.Write(sbToWrite);
                 sbToWrite.Clear();
             }
         }

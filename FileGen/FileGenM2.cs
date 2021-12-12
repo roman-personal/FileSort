@@ -20,8 +20,7 @@ namespace FileGen {
                     sb.Append(". ");
                     sb.AppendLine(TextItems[random.Next(TextItems.Count)]);
                 }
-                foreach (var chunk in sb.GetChunks())
-                    writer.Write(chunk);
+                writer.Write(sb);
                 currentSize += sb.Length;
                 sb.Clear();
             }
