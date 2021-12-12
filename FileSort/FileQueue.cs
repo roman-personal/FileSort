@@ -3,63 +3,56 @@ using System.Collections.Generic;
 using System.Linq;
 
 namespace FileSort {
-    internal class FileQueueItem {
-        public FileQueueItem(int generation, string fileName) {
-            Generation = generation;
-            FileName = fileName;
+    internal class FileSet {
+        public FileSet() {
+            FileNames = new List<string>();
         }
 
-        public int Generation { get; }
-        public string FileName { get; }
-    }
-
-    internal class FileQueueItemComparer : IComparer<FileQueueItem> {
-        public int Compare(FileQueueItem x, FileQueueItem y) => 
-            x.Generation.CompareTo(y.Generation);
+        public int Generation { get; set; }
+        public List<string> FileNames {  get; }
     }
 
     internal class FileQueue {
-        readonly List<FileQueueItem> items = new List<FileQueueItem>();
-        readonly IComparer<FileQueueItem> comparer = new FileQueueItemComparer();
+        readonly List<List<string>> generations = new List<List<string>>();
 
         public FileQueue() { }
 
-        public bool IsEmpty => items.Count == 0;
-        public int Count => items.Count;
+        public bool IsEmpty => Count == 0;
+        public int Count => generations.Sum(x => x.Count);
 
-        public void Enqueue(FileQueueItem item) {
-            int index = items.BinarySearch(item, comparer);
-            if (index < 0)
-                index = ~index;
-            items.Insert(index, item);
+        public void Enqueue(int generation, string fileName) {
+            while (generations.Count <= generation)
+                generations.Add(new List<string>());
+            generations[generation].Add(fileName);
         }
 
-        public void Enqueue(int generation, string fileName) => 
-            Enqueue(new FileQueueItem(generation, fileName));
-
-        public FileQueueItem Dequeue() {
+        public FileSet Dequeue() {
             if (IsEmpty)
-                throw new InvalidOperationException();
-            var result = items[0];
-            items.RemoveAt(0);
-            return result;
-        }
-
-        public IEnumerable<FileQueueItem> BulkDequeue(int maxGeneration, int count) {
-            var result = new List<FileQueueItem>();
-            for (int i = 0; i < count; i++) {
-                if (items[i].Generation > maxGeneration)
-                    break;
-                result.Add(items[i]);
+                return null;
+            var result = new FileSet();
+            for (int i = 0; i < generations.Count; i++) {
+                var generation = generations[i];
+                if (generation.Count > 0) {
+                    result.Generation = i;
+                    result.FileNames.AddRange(generation);
+                    generation.Clear();
+                }
             }
-            if (result.Count < 2)
-                result.Clear();
-            else
-                items.RemoveRange(0, result.Count);
             return result;
         }
-
-        public int GetCount(int maxGeneration) =>
-            items.Where(x => x.Generation <= maxGeneration).Count();
+        
+        public FileSet Dequeue(int requiredItemsCount, int maxGeneration) {
+            for (int i = 0; i < Math.Min(generations.Count, maxGeneration); i++) {
+                var generation = generations[i];
+                if (generation.Count >= requiredItemsCount) {
+                    var result = new FileSet();
+                    result.Generation = i;
+                    result.FileNames.AddRange(generation.Take(requiredItemsCount));
+                    generation.RemoveRange(0, requiredItemsCount);
+                    return result;
+                }
+            }
+            return null;
+        }
     }
 }

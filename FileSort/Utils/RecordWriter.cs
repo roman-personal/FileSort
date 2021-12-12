@@ -5,12 +5,13 @@ using System.Text;
 namespace FileSort.Utils {
     internal class RecordWriter : IDisposable {
         const int chunkSize = 1024 * 1024;
+        const int bufferSize = 32768;
         Stream stream;
         StreamWriter writer;
         StringBuilder sb;
 
         public RecordWriter(string fileName) {
-            stream = new FileStream(fileName, FileMode.Create, FileAccess.Write, FileShare.None, 32768);
+            stream = new FileStream(fileName, FileMode.Create, FileAccess.Write, FileShare.None, bufferSize);
             writer = new StreamWriter(stream);
             sb = new StringBuilder(chunkSize + 1024);
         }
@@ -28,7 +29,7 @@ namespace FileSort.Utils {
         }
 
         public void Flush() {
-            if (sb.Length > 0) {
+            if (sb != null && sb.Length > 0) {
                 writer.Write(sb);
                 sb.Clear();
             }
@@ -36,7 +37,6 @@ namespace FileSort.Utils {
 
         public void Dispose() {
             Flush();
-            writer?.Flush();
             writer?.Dispose();
             writer = null;
             stream?.Dispose();

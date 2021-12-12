@@ -4,12 +4,13 @@ using System.Text;
 
 namespace FileSort.Utils {
     internal class RecordReader : IDisposable {
+        const int bufferSize = 1024 * 1024; // 1MB
         Stream stream;
         StreamReader reader;
         StringBuilder sb;
 
         public RecordReader(string fileName) {
-            stream = new FileStream(fileName, FileMode.Open, FileAccess.Read, FileShare.None, 1024*1024);
+            stream = new FileStream(fileName, FileMode.Open, FileAccess.Read, FileShare.None, bufferSize);
             reader = new StreamReader(stream);
             sb = new StringBuilder();
         }

@@ -11,10 +11,10 @@ using FileSort.Utils;
 namespace FileSort {
     internal class FileSorterM1 : IFileSorter {
         const int NumberOfSortingTasks = 4;
-        const int NumberOfMergingTasks = 4;
-        const int MaxNumberOfFilledChunks = 8;
-        const int MaxGeneration = 2;
-        const int MaxNumberOfFilesToMerge = 8;
+        const int NumberOfMergingTasks = 6;
+        const int MaxNumberOfFilledChunks = 12;
+        const int NumberOfFilesToMerge = 2;
+        const int MaxGeneration = 5;
         readonly ConcurrentQueue<FileChunk> filledChunks = new ConcurrentQueue<FileChunk>();
         readonly ConcurrentQueue<FileChunk> freeChunks = new ConcurrentQueue<FileChunk>();
         readonly FileQueue filesToMerge = new FileQueue();
@@ -127,7 +127,7 @@ namespace FileSort {
                     string fileName = Path.Combine(tempDirPath, Guid.NewGuid().ToString() + ".txt");
                     WriteChunk(chunk, fileName);
                     lock (syncFilesToMerge)
-                        filesToMerge.Enqueue(1, fileName);
+                        filesToMerge.Enqueue(0, fileName);
                     chunk.Clear();
                     freeChunks.Enqueue(chunk);
                     chunkThrottle.Release();
@@ -141,42 +141,45 @@ namespace FileSort {
             using var writer = new RecordWriter(fileName);
             foreach (var record in chunk)
                 writer.Write(record);
-            writer.Flush();
         }
 
         void MergeFiles() {
             bool lastMerge = false;
-            var items = new List<FileQueueItem>();
             while (!lastMerge) {
-                items.Clear();
+                FileSet fileSet = null;
                 lock (syncFilesToMerge) {
                     if (sortComplete.IsSet) {
-                        if (filesToMerge.Count == 0)
+                        if (filesToMerge.Count == 0 && filesInMerge == 0)
                             return;
                         if (filesInMerge == 0) {
-                            while (filesToMerge.Count > 0)
-                                items.Add(filesToMerge.Dequeue());
+                            fileSet = filesToMerge.Dequeue();
                             lastMerge = true;
                             Console.WriteLine("Last merge");
                         }
-                    }
-                    else if (filesToMerge.GetCount(MaxGeneration) > MaxNumberOfFilesToMerge) {
-                        items.AddRange(filesToMerge.BulkDequeue(MaxGeneration, MaxNumberOfFilesToMerge));
-                        filesInMerge += items.Count;
-                    }
-                }
-                if (items.Count > 0) {
-                    string fileName = lastMerge ? sortedFilePath : Path.Combine(tempDirPath, Guid.NewGuid().ToString() + ".txt");
-                    if (items.Count == 1) {
-                        File.Move(items[0].FileName, fileName, true);
+                        else {
+                            fileSet = filesToMerge.Dequeue(NumberOfFilesToMerge, MaxGeneration);
+                            if (fileSet != null)
+                                filesInMerge += fileSet.FileNames.Count;
+                        }
                     }
                     else {
-                        MergeFiles(items.Select(x => x.FileName), fileName);
-                        items.ForEach(x => File.Delete(x.FileName));
+                        fileSet = filesToMerge.Dequeue(NumberOfFilesToMerge, MaxGeneration);
+                        if (fileSet != null)
+                            filesInMerge += fileSet.FileNames.Count;
+                    }
+                }
+                if (fileSet != null) {
+                    string fileName = lastMerge ? sortedFilePath : Path.Combine(tempDirPath, Guid.NewGuid().ToString() + ".txt");
+                    if (fileSet.FileNames.Count == 1) {
+                        File.Move(fileSet.FileNames[0], fileName, true);
+                    }
+                    else {
+                        MergeFiles(fileSet.FileNames, fileName);
+                        fileSet.FileNames.ForEach(x => File.Delete(x));
                         if (!lastMerge) {
                             lock (syncFilesToMerge) {
-                                filesToMerge.Enqueue(items.Select(x => x.Generation).Max() + 1, fileName);
-                                filesInMerge -= items.Count;
+                                filesToMerge.Enqueue(fileSet.Generation + 1, fileName);
+                                filesInMerge -= fileSet.FileNames.Count;
                             }
                         }
                     }
@@ -198,8 +201,15 @@ namespace FileSort {
                     var source = GetSourceWithLowestRecord(recordSources);
                     if (source == null)
                         break;
-                    writer.Write(source.Record);
-                    source.NextRecord();
+                    FileRecord current;
+                    do {
+                        current = source.Record;
+                        writer.Write(current);
+                        source.NextRecord();
+                    }
+                    while (source.Record != null && current.CompareTo(source.Record) == 0);
+                    //writer.Write(source.Record);
+                    //source.NextRecord();
                 }
                 writer.Flush();
             }
@@ -209,7 +219,7 @@ namespace FileSort {
             }
         }
 
-        RecordSource GetSourceWithLowestRecord(List<RecordSource> recordSources) {
+        RecordSource GetSourceWithLowestRecord(IEnumerable<RecordSource> recordSources) {
             RecordSource result = null;
             foreach (var recordSource in recordSources.Where(x => x.Record != null)) {
                 if (result == null || recordSource.Record.CompareTo(result.Record) < 0)
