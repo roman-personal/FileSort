@@ -10,13 +10,14 @@ using FileSort.Utils;
 
 namespace FileSort {
     internal class FileSorterM1 : IFileSorter {
+        const int fileChunkCapacity = 1024 * 1024;
         const int NumberOfSortingTasks = 4;
         const int NumberOfMergingTasks = 6;
         const int MaxNumberOfFilledChunks = 12;
         const int NumberOfFilesToMerge = 2;
         const int MaxGeneration = 5;
-        readonly ConcurrentQueue<FileChunk> filledChunks = new ConcurrentQueue<FileChunk>();
-        readonly ConcurrentQueue<FileChunk> freeChunks = new ConcurrentQueue<FileChunk>();
+        readonly ConcurrentQueue<List<FileRecord>> filledChunks = new ConcurrentQueue<List<FileRecord>>();
+        readonly ConcurrentQueue<List<FileRecord>> freeChunks = new ConcurrentQueue<List<FileRecord>>();
         readonly FileQueue filesToMerge = new FileQueue();
         readonly object syncFilesToMerge = new object();
         int filesInMerge = 0;
@@ -36,12 +37,12 @@ namespace FileSort {
                 using (sortComplete = new ManualResetEventSlim(false))
                 using (readComplete = new ManualResetEventSlim(false))
                 using (chunkThrottle = new SemaphoreSlim(MaxNumberOfFilledChunks)) {
-                    var mergeTasks = CreateMergeTasks(NumberOfMergingTasks);
-                    var sortTasks = CreateSortTasks(NumberOfSortingTasks);
+                    var mergeTasks = CreateTasks(NumberOfMergingTasks, MergeFiles);
+                    var sortTasks = CreateTasks(NumberOfSortingTasks, SortChunk);
                     ReadSourceFile(options.SourceFileName);
+                    readComplete.Set();
                     Task.WaitAll(sortTasks);
                     sortComplete.Set();
-                    Console.WriteLine("Read/sort completed");
                     Task.WaitAll(mergeTasks);
                 }
             }
@@ -50,17 +51,10 @@ namespace FileSort {
             }
         }
 
-        Task[] CreateSortTasks(int count) {
+        Task[] CreateTasks(int count, Action action) {
             var tasks = new List<Task>();
             for (int i = 0; i < count; i++)
-                tasks.Add(Task.Run(SortChunk));
-            return tasks.ToArray();
-        }
-
-        Task[] CreateMergeTasks(int count) {
-            var tasks = new List<Task>();
-            for (int i = 0; i < count; i++)
-                tasks.Add(Task.Run(MergeFiles));
+                tasks.Add(Task.Run(action));
             return tasks.ToArray();
         }
 
@@ -82,37 +76,32 @@ namespace FileSort {
         }
 
         void ReadSourceFile(string fileName) {
-            try {
-                using var reader = new RecordReader(fileName);
-                while (true) {
-                    chunkThrottle.Wait();
-                    var chunk = GetFreeChunk();
-                    FillChunk(reader, chunk);
-                    filledChunks.Enqueue(chunk);
-                    if (chunk.Count < FileChunk.Size)
-                        break;
-                }
-            }
-            finally {
-                readComplete.Set();
+            using var reader = new RecordReader(fileName);
+            while (true) {
+                chunkThrottle.Wait();
+                var chunk = GetFreeChunk();
+                FillChunk(reader, chunk);
+                filledChunks.Enqueue(chunk);
+                if (chunk.Count < fileChunkCapacity)
+                    break;
             }
         }
 
-        FileChunk GetFreeChunk() {
+        List<FileRecord> GetFreeChunk() {
             if (!freeChunks.IsEmpty) {
                 int attempt = 3;
                 while (attempt-- > 0) {
-                    if (freeChunks.TryDequeue(out FileChunk chunk))
+                    if (freeChunks.TryDequeue(out List<FileRecord> chunk))
                         return chunk;
                     else
                         Thread.Sleep(50);
                 }
             }
-            return new FileChunk();
+            return new List<FileRecord>(fileChunkCapacity);
         }
 
-        void FillChunk(RecordReader reader, FileChunk chunk) {
-            while (chunk.Count < FileChunk.Size) {
+        void FillChunk(RecordReader reader, List<FileRecord> chunk) {
+            while (chunk.Count < fileChunkCapacity) {
                 var record = reader.ReadRecord();
                 if (record == null)
                     break;
@@ -122,7 +111,7 @@ namespace FileSort {
 
         void SortChunk() {
             while(!readComplete.IsSet || !filledChunks.IsEmpty) {
-                if (filledChunks.TryDequeue(out FileChunk chunk)) {
+                if (filledChunks.TryDequeue(out List<FileRecord> chunk)) {
                     chunk.Sort();
                     string fileName = Path.Combine(tempDirPath, Guid.NewGuid().ToString() + ".txt");
                     WriteChunk(chunk, fileName);
@@ -137,7 +126,7 @@ namespace FileSort {
             }
         }
 
-        void WriteChunk(FileChunk chunk, string fileName) {
+        void WriteChunk(List<FileRecord> chunk, string fileName) {
             using var writer = new RecordWriter(fileName);
             foreach (var record in chunk)
                 writer.Write(record);
@@ -154,7 +143,6 @@ namespace FileSort {
                         if (filesInMerge == 0) {
                             fileSet = filesToMerge.Dequeue();
                             lastMerge = true;
-                            Console.WriteLine("Last merge");
                         }
                         else {
                             fileSet = filesToMerge.Dequeue(NumberOfFilesToMerge, MaxGeneration);
@@ -208,8 +196,6 @@ namespace FileSort {
                         source.NextRecord();
                     }
                     while (source.Record != null && current.CompareTo(source.Record) == 0);
-                    //writer.Write(source.Record);
-                    //source.NextRecord();
                 }
                 writer.Flush();
             }
@@ -221,9 +207,11 @@ namespace FileSort {
 
         RecordSource GetSourceWithLowestRecord(IEnumerable<RecordSource> recordSources) {
             RecordSource result = null;
-            foreach (var recordSource in recordSources.Where(x => x.Record != null)) {
-                if (result == null || recordSource.Record.CompareTo(result.Record) < 0)
-                    result = recordSource;
+            foreach (var recordSource in recordSources) {
+                if (recordSource.Record != null) {
+                    if (result == null || recordSource.Record.CompareTo(result.Record) < 0)
+                        result = recordSource;
+                }
             }
             return result;
         }

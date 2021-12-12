@@ -11,7 +11,7 @@ namespace FileSort {
             var result = new FileSortOptions();
             result.SourceFileName = args.Length > 0 ? args[0] : "sample.txt";
             result.TargetFileName = args.Length > 1 ? args[1] : "sorted.txt";
-            if (!Enum.TryParse(args.Length > 2 ? args[2] : "M1", out SortMode mode))
+            if (!Enum.TryParse(args.Length > 2 ? args[2].ToUpper() : "M1", out SortMode mode))
                 mode = SortMode.M1;
             result.Mode = mode;
             return result;
