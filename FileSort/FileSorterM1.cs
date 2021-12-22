@@ -144,13 +144,8 @@ namespace FileSort {
                             fileSet = filesToMerge.Dequeue();
                             lastMerge = true;
                         }
-                        else {
-                            fileSet = filesToMerge.Dequeue(NumberOfFilesToMerge, MaxGeneration);
-                            if (fileSet != null)
-                                filesInMerge += fileSet.FileNames.Count;
-                        }
                     }
-                    else {
+                    if (fileSet == null) {
                         fileSet = filesToMerge.Dequeue(NumberOfFilesToMerge, MaxGeneration);
                         if (fileSet != null)
                             filesInMerge += fileSet.FileNames.Count;
